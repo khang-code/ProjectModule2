@@ -1,7 +1,7 @@
 package com.codegym.entity;
 
 public class Admin extends User{
-    public Admin(int id, String name, String address, String email, Object role) {
-        super(id, name, address, email, role);
+    public Admin(String s, String id, String name, String email) {
+        super(s, id, name, email);
     }
 }

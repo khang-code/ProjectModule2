@@ -1,99 +1,138 @@
 package com.codegym.service;
 
-import com.codegym.entity.User;
+import com.codegym.entity.books.Book;
+import com.codegym.entity.books.Category;
+import com.codegym.service_show.UserServiceShow;
 
-import java.awt.print.Book;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.InputMismatchException;
-import java.util.List;
-import java.util.Scanner;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class BookService {
-    int Count = 0;
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-        try{
-            System.out.println("----------------Menu------------------");
-            System.out.println("1: add new book");
-            System.out.println("2: update book status");
-            System.out.println("3: delete book");
-            System.out.println("0: exit");
-            System.out.print("Enter your choice :");
-            int choice = Integer.parseInt(scanner.nextLine());
-            do {
-                switch (choice) {
-                    case 1:
-                        addBook();
-                        break;
-                    case 2:
-                        updateBook();
-                        break;
-                    case 3:
-                        deleteBook();
-                        break;
-                    case 0:
-                        return;
-                    default:
-                        System.out.println("Invalid choice");
-                        break;
-                }} while (choice != 0);
-        } catch (InputMismatchException e) {
-            System.out.println("Invalid input, enter a number");
-            scanner.nextLine();
+    private static final String BOOK_FILE_PATH = "src/com/codegym/books.csv";
+
+    private final UserServiceShow userServiceShow;
+    private Map<String, Book> books = new HashMap<>();
+    private final Map<String, Category> categories = new HashMap<>();
+
+    // Constructor
+    public BookService(UserServiceShow userServiceShow) {
+        this.userServiceShow = userServiceShow;
+        this.books = loadBooksFromFile();
+    }
+
+    // Check if a book ID exists
+    public boolean isBookIdTaken(String bookId) {
+        return books.containsKey(bookId);
+    }
+
+    // Register a new book
+    public void registerBook(String bookId, String name, String type, double price, int quantity, String description) {
+        if (isBookIdTaken(bookId)) {
+            userServiceShow.showMessage("Book ID is already in use. Please choose another.");
+        } else {
+            Book newBook = new Book(Integer.parseInt(bookId), name, type, price, quantity, description);
+            books.put(bookId, newBook);
+            saveBooksToFile();
+            userServiceShow.showMessage("Book registered successfully.");
         }
     }
-    public static void addBook() {
-        Scanner scanner = new Scanner(System.in);
-        System.out.print("Enter title : ");
-        String title = scanner.nextLine();
-        System.out.print("Enter author : ");
-        String author = scanner.nextLine();
-        
-    }
-    public static void updateBook() {
 
-    }
-    public static void deleteBook() {
+    // Add a book to a category
+    public void addBookToCategory(String bookId, String categoryName) {
+        Book book = books.get(bookId);
+        if (book == null) {
+            userServiceShow.showMessage("No such book found.");
+            return;
+        }
 
+        Category category = categories.computeIfAbsent(categoryName, Category::new);
+        category.addBookToCategory(book);
+        saveBooksToFile();
+        userServiceShow.showMessage("Book added to category.");
     }
-    private static List<User> loadUsers() throws IOException {
-        File file = new File("D:\\khang\\c0624g1Module2\\Project\\src\\com\\codegym\\storage\\book.txt");
-        FileReader fileReader = new FileReader(file);
-        BufferedReader bufferedReader = new BufferedReader(fileReader);
-        String line;
-        List<User> listBooks = new ArrayList<>();
 
-        while ((line = bufferedReader.readLine()) != null) {
-            line = line.trim();
-            if (!line.isEmpty()) {
-                continue;
+    // Remove a book by ID
+    public boolean removeBook(String bookId) {
+        if (books.remove(bookId) != null) {
+            saveBooksToFile();
+            userServiceShow.showMessage("Book removed successfully.");
+            return true;
+        } else {
+            userServiceShow.showMessage("Book not found.");
+            return false;
+        }
+    }
+
+    // Get a book by ID
+    public Book getBook(String bookId) {
+        return books.get(bookId);
+    }
+
+    // Get all books in a category
+    public Map<String, Book> getBooksByCategory(String categoryName) {
+        Category category = categories.get(categoryName);
+        if (category != null) {
+            return category.getBooks().stream()
+                    .collect(Collectors.toMap(book -> String.valueOf(book.getProductId()), book -> book));
+        }
+        return Collections.emptyMap();
+    }
+
+    // Save all books to a file
+    private void saveBooksToFile() {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(BOOK_FILE_PATH))) {
+            writer.write("BookId,Name,Type,Price,Quantity,Description\n");
+            for (Book book : books.values()) {
+                writer.write(String.format("%d,%s,%s,%n",
+                        book.getProductId(),
+                        book.getName(),
+                        book.getType()
+                        ));
             }
-            String[] tokens = line.split(",");
-            if (tokens.length < 3) {
-                System.out.println("invalid line" + line);
-                continue;
-            }
-            String userName = tokens[0];
-            String password = tokens[1];
-            String email = tokens[2];
+        } catch (IOException e) {
+            userServiceShow.showMessage("Error writing books to file: " + e.getMessage());
         }
-        bufferedReader.close();
-        return listBooks;
     }
 
-    private static void saveBooks(List<User> listBooks) throws IOException {
-        File myFile = new File("D:\\khang\\c0624g1Module2\\Project\\src\\com\\codegym\\storage\\book.txt");
-        FileWriter writer = new FileWriter(myFile,true);
-        BufferedWriter bufferedWriter = new BufferedWriter(writer);
+    // Load all books from a file
+    private Map<String, Book> loadBooksFromFile() {
+        Map<String, Book> loadedBooks = new HashMap<>();
+        try (BufferedReader reader = new BufferedReader(new FileReader(BOOK_FILE_PATH))) {
+            reader.readLine(); // Skip header
+            String line;
 
-        for (User user : listBooks) {
-            String data = user.getId() + "," + user.getName() + "," + user.getEmail();
-            bufferedWriter.append(data);
-            bufferedWriter.newLine();
+            while ((line = reader.readLine()) != null) {
+                String[] split = line.split(",");
+
+                if (split.length != 6) {
+                    System.err.println("Invalid data format: " + line);
+                    continue;
+                }
+
+                try {
+                    int bookId = Integer.parseInt(split[0].trim());
+                    String name = split[1].trim();
+                    String type = split[2].trim();
+                    double price = Double.parseDouble(split[3].trim());
+                    int quantity = Integer.parseInt(split[4].trim());
+                    String description = split[5].trim();
+
+                    Book book = new Book(bookId, name, type, price, quantity, description);
+                    loadedBooks.put(String.valueOf(bookId), book);
+                } catch (NumberFormatException e) {
+                    System.err.println("Invalid data format in file: " + line);
+                }
+            }
+        } catch (FileNotFoundException e) {
+            System.err.println("Book file not found: " + BOOK_FILE_PATH);
+        } catch (IOException e) {
+            System.err.println("Error reading books from file: " + e.getMessage());
         }
+        return loadedBooks;
+    }
 
-        bufferedWriter.close();
+    public int getBookById(int productId) {
+    return productId;
     }
 }
-
